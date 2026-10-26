@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuickPing v0.80 逆向分析报告</title>
+<style>
+  :root{
+    --bg:#f6f8fa; --card:#ffffff; --ink:#1f2328; --muted:#57606a;
+    --line:#d0d7de; --accent:#0969da; --accent2:#8250df;
+    --code-bg:#f0f3f6; --th:#eaeef2;
+    --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;line-height:1.65}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+  header.hero{background:linear-gradient(135deg,#0b1f3a 0%,#123a6d 55%,#1f5aa8 100%);
+    color:#fff;border-radius:14px;padding:36px 40px;margin-bottom:28px}
+  header.hero h1{margin:0 0 8px;font-size:30px;letter-spacing:.5px}
+  header.hero p{margin:4px 0;color:#c9d8ee}
+  .badge{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);
+    border-radius:999px;padding:2px 12px;font-size:12.5px;margin:10px 8px 0 0}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:26px 30px;margin-bottom:22px}
+  h2{font-size:21px;margin:0 0 14px;padding-bottom:10px;border-bottom:2px solid var(--accent);
+    display:flex;align-items:center;gap:10px}
+  h2 .no{background:var(--accent);color:#fff;border-radius:8px;font-size:14px;
+    padding:2px 10px;font-weight:600}
+  h3{font-size:16.5px;margin:22px 0 8px;color:#24292f}
+  p{margin:8px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--th);font-weight:600;white-space:nowrap}
+  tr:nth-child(even) td{background:#fafbfc}
+  code,.addr{font-family:Consolas,"Courier New",monospace;font-size:13px;
+    background:var(--code-bg);border-radius:4px;padding:1px 6px}
+  pre{background:#0d1117;color:#e6edf3;border-radius:10px;padding:16px 18px;
+    overflow-x:auto;font-size:13px;line-height:1.55}
+  pre code{background:none;color:inherit;padding:0}
+  .note{border-left:4px solid var(--accent);background:#ddf4ff;border-radius:6px;
+    padding:10px 14px;margin:12px 0;font-size:14px}
+  .warn{border-left:4px solid var(--warn);background:#fff8c5;border-radius:6px;
+    padding:10px 14px;margin:12px 0;font-size:14px}
+  .bad{border-left:4px solid var(--bad);background:#ffebe9;border-radius:6px;
+    padding:10px 14px;margin:12px 0;font-size:14px}
+  .ok{border-left:4px solid var(--ok);background:#dafbe1;border-radius:6px;
+    padding:10px 14px;margin:12px 0;font-size:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+  .swatch{display:inline-block;width:16px;height:16px;border-radius:3px;
+    border:1px solid #888;vertical-align:-3px;margin-right:6px}
+  .toc{columns:2;column-gap:32px;font-size:14px}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc li{margin:4px 0;break-inside:avoid}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin-top:26px}
+  .kv td:first-child{width:230px;font-weight:600;background:var(--th)}
+  .small{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>QuickPing v0.80 逆向分析报告</h1>
+  <p>目标文件：QuickPing_v0.80.exe（433,152 字节，32 位 Windows PE，Delphi 编写）</p>
+  <p>分析工具：REA（github.com/morluto/rea，rea-agents v6.5.0）+ Rizin v0.9.1</p>
+  <p>报告日期：2026-10-16</p>
+  <span class="badge">原生 x86 代码</span>
+  <span class="badge">Delphi VCL</span>
+  <span class="badge">Win9x 时代工具</span>
+  <span class="badge">作者：陈斌斌（CBB）</span>
+  <span class="badge">无恶意行为</span>
+</header>
+
+<section>
+  <h2><span class="no">目录</span></h2>
+  <ol class="toc">
+    <li><a href="#s1">目标概览</a></li>
+    <li><a href="#s2">分析方法与工具链</a></li>
+    <li><a href="#s3">PE 结构与 Delphi 特征</a></li>
+    <li><a href="#s4">导入表分析</a></li>
+    <li><a href="#s5">程序界面还原（DFM）</a></li>
+    <li><a href="#s6">程序总体流程</a></li>
+    <li><a href="#s7">PingThread 线程类</a></li>
+    <li><a href="#s8">结果回写与显示逻辑</a></li>
+    <li><a href="#s9">ICMP 状态文本映射表</a></li>
+    <li><a href="#s10">颜色语义</a></li>
+    <li><a href="#s11">Win9x 注册表子网掩码获取</a></li>
+    <li><a href="#s12">程序怪癖与疑似 Bug</a></li>
+    <li><a href="#s13">安全与行为评估</a></li>
+    <li><a href="#s14">附录：关键地址速查表</a></li>
+  </ol>
+</section>
+
+<section id="s1">
+  <h2><span class="no">1</span>目标概览</h2>
+  <table class="kv">
+    <tr><td>文件名</td><td>QuickPing_v0.80.exe（版本资源 OriginalFilename：<code>QckPing.exe</code>）</td></tr>
+    <tr><td>文件大小</td><td>433,152 字节</td></tr>
+    <tr><td>文件类型</td><td>32 位 Windows PE 可执行文件（i386），无壳、无 .NET、无打包器</td></tr>
+    <tr><td>映像基址</td><td><code>0x00400000</code></td></tr>
+    <tr><td>开发语言</td><td>Borland Delphi（VCL 框架，原生 x86 代码）</td></tr>
+    <tr><td>目标平台</td><td>Windows 95/98 时代（代码中大量 Win9x 专属逻辑，如注册表 <code>NetTrans</code> 键、本机 IP 获取方式）</td></tr>
+    <tr><td>作者</td><td>陈斌斌（CBB）——版本资源版权声明与内置字符串 <code>"PING, written by CBB!"</code>（0x45a644）</td></tr>
+    <tr><td>软件用途</td><td>局域网批量 ICMP Ping 扫描工具：按网段批量探测主机在线状态，以 16×16 彩色方格图 + 明细表格双视图展示，支持 MAC 地址与主机名反查、结果导出 CSV</td></tr>
+    <tr><td>单实例机制</td><td>以字符串 <code>"quickping"</code>（0x45ca80 处引用）做互斥检查，防止重复运行</td></tr>
+  </table>
+  <div class="note">一句话定性：这是一个 Win98 时代的国产（中文界面）轻量网管小工具，用 Delphi 编写，核心是"多线程 ICMP 批量扫描 + 色块可视化"，无任何恶意功能。</div>
+</section>
+
+<section id="s2">
+  <h2><span class="no">2</span>分析方法与工具链</h2>
+  <p>按用户要求，使用仓库 <code>https://github.com/morluto/rea</code>（REA，实际安装为 <b>rea-agents v6.5.0</b>）作为分析编排层，<b>Rizin v0.9.1</b> 作为底层反汇编/分析引擎，对目标进行静态逆向。</p>
+  <h3>分析步骤</h3>
+  <ol>
+    <li><b>类型判定</b>：确认目标为原生 32 位 PE（非 .NET、非加壳），选定 Rizin 作为后端。</li>
+    <li><b>环境搭建</b>：安装 Rizin，编写 REA 封装脚本 <code>run-rea.ps1</code>，以"命令 → 转储文件"方式批量驱动 Rizin。</li>
+    <li><b>全量分析</b>：执行 <code>aaa</code> 完整分析并枚举全部函数。</li>
+    <li><b>元数据提取</b>：导入表（<code>ii</code>）、字符串（<code>iz/izz</code>）、节区、PE 资源与版本信息。</li>
+    <li><b>Delphi 结构还原</b>：解析嵌入的 DFM 窗体资源还原 UI；通过方法表与交叉引用定位全部事件处理函数。</li>
+    <li><b>核心逻辑反编译</b>：逐段反汇编并人工还原 PingThread 构造/执行、结果回写、颜色映射、状态文本、注册表掩码等关键函数。</li>
+  </ol>
+  <div class="note">Delphi 专项处理：程序字符串为 GBK 编码，Rizin 的 <code>ps</code> 命令显示乱码，故采用 <code>p8</code> 十六进制转储后按代码页 936（GBK）解码；Delphi 长字符串头部为 <code>ffffffff</code>（引用计数）+ int32 长度，实际数据位于 +8 处；<code>push &lt;地址&gt;; 清理; ret</code> 是 Delphi try/finally 的延续块模式，函数实际范围需跨越这些块判定。</div>
+</section>
+
+<section id="s3">
+  <h2><span class="no">3</span>PE 结构与 Delphi 特征</h2>
+  <ul>
+    <li>32 位 PE，i386 架构，映像基址 <code>0x400000</code>，标准 Delphi 布局（代码段 + 只读数据段 + 资源段）。</li>
+    <li>链接 Delphi RTL/VCL 运行库：大量 <code>0x40xxxx</code>–<code>0x41xxxx</code> 区间的系统例程，如 <code>0x403a3c</code>（LStrAsg，字符串赋值）、<code>0x407e14</code>（IntToStr）、<code>0x40880c</code>（Format）、<code>0x4026f4/0x40270c</code>（堆内存分配/释放）。</li>
+    <li>窗体以 DFM 二进制资源内嵌，完整还原出主窗体 TForm1 及其全部控件（见第 5 节）。</li>
+    <li>字符串资源集中在 <code>0x45a6xx</code>–<code>0x45caxx</code> 区间，全部为 GBK 编码的中文提示与英文网络术语混合。</li>
+    <li>版本资源：OriginalFilename=<code>QckPing.exe</code>，版权信息指向作者陈斌斌。</li>
+  </ul>
+</section>
+
+<section id="s4">
+  <h2><span class="no">4</span>导入表分析</h2>
+  <p>导入 API 按功能分组如下，全部与"网管扫描工具"的定位吻合：</p>
+  <table>
+    <tr><th>分组</th><th>关键 API</th><th>用途</th></tr>
+    <tr><td>ICMP（iphlpapi/icmp 辅助）</td>
+      <td><code>IcmpCreateFile</code> / <code>IcmpSendEcho</code> / <code>IcmpCloseHandle</code></td>
+      <td>核心探测：打开 ICMP 句柄、发送回显请求（8 参数调用）、关闭句柄</td></tr>
+    <tr><td>Winsock</td>
+      <td><code>WSAStartup</code> / <code>WSACleanup</code> / <code>inet_addr</code> / <code>gethostbyaddr</code></td>
+      <td>套接字初始化、IP 字符串→二进制转换、IP→主机名反向解析</td></tr>
+    <tr><td>IP 帮助器</td>
+      <td><code>GetIpNetTable</code>（经 <code>0x4597e0</code> 跳板调用）</td>
+      <td>读取 ARP 缓存表（MIB_IPNETTABLE），由 IP 查 MAC 地址</td></tr>
+    <tr><td>注册表</td>
+      <td><code>RegOpenKeyEx</code> / <code>RegQueryValueEx</code> / <code>RegCloseKey</code></td>
+      <td>Win9x 下从 <code>NetTrans</code> 键读取本机子网掩码（只读，见第 11 节）</td></tr>
+    <tr><td>GUI（user32/gdi32/kernel32）</td>
+      <td>标准窗口/绘图/线程 API</td>
+      <td>Delphi VCL 界面支撑、<code>CreateThread</code> 创建工作线程、定时器</td></tr>
+  </table>
+  <div class="note">导入面非常干净：没有文件删除、服务安装、进程注入、网络下载、自启动等任何可疑 API。<code>GetIpNetTable</code> 初看像"死导入"（其引用位于自写跳板函数内），经交叉引用确认在结果回写路径 <code>0x45a336</code> 处被真实调用，用于 MAC 地址查询。</div>
+</section>
+
+<section id="s5">
+  <h2><span class="no">5</span>程序界面还原（DFM）</h2>
+  <p>主窗体 <b>TForm1</b> 从内嵌 DFM 资源完整还原，控件与功能如下：</p>
+  <table>
+    <tr><th>控件</th><th>类型</th><th>功能</th></tr>
+    <tr><td><code>grid1</code></td><td>StringGrid</td><td>明细表格，四列标题（0x45c424/0x45c434/0x45c448/0x45c458）：<b>IP地址 / 网卡地址 / 主机名 / 返回信息</b></td></tr>
+    <tr><td><code>grid2</code></td><td>DrawGrid</td><td>16×16 彩色方格图，每格代表一台主机（行号 = 主机序号，mod16/div16 换算坐标），最多 256 台</td></tr>
+    <tr><td><code>startbutton</code></td><td>Button</td><td>开始扫描</td></tr>
+    <tr><td><code>stopbutton</code></td><td>Button</td><td>停止扫描</td></tr>
+    <tr><td><code>savetolog1</code></td><td>Button</td><td>将结果导出为 CSV 日志（逗号分隔，文件名含 <code>quickping</code>）</td></tr>
+    <tr><td><code>dealresultbutton</code></td><td>Button</td><td>"精简结果"：整理/压缩结果视图</td></tr>
+    <tr><td><code>IP01–IP05</code></td><td>Edit ×5</td><td>IP 前缀分段输入（如 <code>255</code>/<code>255.255.255.</code>/<code>0.0.0.</code> 等默认片段，0x45bd1c–0x45bd54）</td></tr>
+    <tr><td><code>timeout01</code></td><td>Edit</td><td>Ping 超时时间（毫秒）</td></tr>
+    <tr><td><code>thread_No</code></td><td>Edit</td><td>并发线程数（上限 40）</td></tr>
+    <tr><td>模式切换</td><td>控件</td><td><b>图形模式 / 表格模式</b>（0x45c5ac / 0x45c5c0）双视图切换，对应 Form1 偏移 0x36c 的模式标志</td></tr>
+    <tr><td><code>timer1</code></td><td>Timer</td><td>轮询扫描进度：活动线程计数归零后做完成统计并刷新界面</td></tr>
+    <tr><td>字体</td><td>—</td><td>宋体（0x45c414），典型中文 Delphi 程序</td></tr>
+  </table>
+  <h3>Form1 关键字段布局（this 偏移）</h3>
+  <table>
+    <tr><th>偏移</th><th>含义</th><th>偏移</th><th>含义</th></tr>
+    <tr><td><code>+0x2d8..+0x2ec</code></td><td>IP01–IP05 编辑框</td><td><code>+0x358..+0x364</code></td><td>IP 前缀各段</td></tr>
+    <tr><td><code>+0x2f0</code></td><td>timeout01</td><td><code>+0x368</code></td><td>子网掩码</td></tr>
+    <tr><td><code>+0x2f4</code></td><td>thread_No</td><td><code>+0x36c</code></td><td>显示模式标志</td></tr>
+    <tr><td><code>+0x304</code></td><td>grid1</td><td><code>+0x370</code></td><td>网络地址</td></tr>
+    <tr><td><code>+0x314</code></td><td>grid2</td><td><code>+0x378 / +0x37c</code></td><td>当前 / 终止主机索引</td></tr>
+    <tr><td><code>+0x34c</code></td><td>活动线程计数</td><td><code>+0x380</code></td><td>首轮扫描标志</td></tr>
+    <tr><td><code>+0x350</code></td><td>线程数（≤40）</td><td><code>+0x354</code></td><td>超时值</td></tr>
+  </table>
+</section>
+
+<section id="s6">
+  <h2><span class="no">6</span>程序总体流程</h2>
+<pre><code>程序启动
+  └─ DPR 入口：以 "quickping" 做单实例互斥检查
+  └─ FormCreate (0x45bfd8)
+       ├─ 初始化 IP 前输入框默认值（255 / 255.255.255. / 0.0.0. 等）
+       ├─ 初始化默认子网掩码 "255.0.0.0" (0x45c498)
+       ├─ Win9x 注册表读取本机真实掩码（见第 11 节）
+       └─ 界面初始化（表格列标题、待测黄色底色）
+
+点击"开始" startbuttonClick (0x45b8bc)
+  ├─ WSAStartup 初始化 Winsock（失败提示"初始化Winsock时发生错误" 0x45c46c）
+  ├─ 由 IP 前缀 + 掩码计算目标网段主机列表（当前索引 0x378 → 终止索引 0x37c）
+  ├─ grid2 全部置为待测色（黄 0xFFFF）
+  └─ 按线程数（≤40）循环创建 PingThread：
+       每线程领取一批主机序号，构造参数传入目标 IP、超时、TTL、
+       grid1/grid2 引用、行号、mod16/div16 坐标、是否查 MAC 标志
+
+PingThread.Execute（0x45a000–0x45a632，每个目标主机一轮）
+  ├─ IcmpCreateFile 打开句柄
+  ├─ inet_addr 转换目标 IP
+  ├─ IcmpSendEcho 发送 56 字节探测包（带超时）
+  ├─ 拷贝 28 字节 ICMP_ECHO_REPLY 到线程对象 +0x34..+0x4f
+  ├─ 成功：[+0x68] = RTT（回复中的往返时间）
+  │  失败：[+0x68] = GetLastError()（IP_STATUS 错误码）
+  ├─ IcmpCloseHandle + WSACleanup
+  └─ 结果回写（见第 8 节）→ 取下一台主机，直到批次结束
+       └─ 线程结束：活动线程计数 -1（0x45bd54: dec [eax+0x34c]）
+
+timer1Timer (0x45bd5c)
+  ├─ 轮询活动线程计数（Form1+0x34c）
+  ├─ 全部归零 → 扫描完成统计：
+  │    统计行色为 0x8000（深绿）/ 0xFF00FF（品红）的行数 = 响应主机数
+  └─ 刷新状态显示；若还有未扫区间且处于循环模式则继续下一轮
+
+"保存" savetolog1Click (0x45c62c)
+  └─ 将 grid1 明细按逗号分隔（"," @ 0x45c7e0）导出为 CSV（文件名含 quickping @ 0x45cabc）
+
+"精简" dealresultbuttonClick (0x45c7e4)
+  └─ 对结果表格做精简/整理显示</code></pre>
+</section>
+
+<section id="s7">
+  <h2><span class="no">7</span>PingThread 线程类</h2>
+  <p>类名（Delphi 类名字段）：<code>"Pingthread"</code>，实例大小 <code>0x88</code> 字节；构造函数位于 <code>0x45989c</code>（10 个参数：IP 串、目标地址、包长、超时、TTL、grid1、grid2、行号、坐标、标志等）。</p>
+  <h3>实例字段布局</h3>
+  <table>
+    <tr><th>偏移</th><th>含义</th><th>偏移</th><th>含义</th></tr>
+    <tr><td><code>+0x18 / +0x1c</code></td><td>FMethod（线程方法指针）</td><td><code>+0x5c</code></td><td>超时（ms）</td></tr>
+    <tr><td><code>+0x30</code></td><td>ICMP 句柄</td><td><code>+0x60</code></td><td>TTL</td></tr>
+    <tr><td><code>+0x34..+0x4f</code></td><td>ICMP_ECHO_REPLY 副本（28 字节）</td><td><code>+0x64</code></td><td>错误码（GetLastError）</td></tr>
+    <tr><td><code>+0x50</code></td><td>目标 IP 字符串</td><td><code>+0x68</code></td><td><b>结果</b>（成功=RTT，失败=错误码）</td></tr>
+    <tr><td><code>+0x54</code></td><td>目标地址（二进制）</td><td><code>+0x6c / +0x70</code></td><td>grid1 / grid2 引用</td></tr>
+    <tr><td><code>+0x58</code></td><td>数据包长度（固定 56）</td><td><code>+0x74</code></td><td>grid1 行号</td></tr>
+    <tr><td><code>+0x78 / +0x7c</code></td><td>grid2 坐标：行号 mod16 / div16</td><td><code>+0x80</code></td><td>主机索引</td></tr>
+    <tr><td><code>+0x84</code></td><td>是否查询 MAC 标志</td><td></td><td></td></tr>
+  </table>
+  <h3>Execute 中的结果落盘（0x45a19a）</h3>
+  <p>该处字节序列 <code>8b45fc 83786801 750e ...</code> 还原为：</p>
+<pre><code>if (结果 &gt; 0 的某判定) {
+    [+0x68] = [+0x38];   // 成功：写入回显回复中的 RTT
+} else {
+    [+0x68] = [+0x64];   // 失败：写入 GetLastError()（IP_STATUS）
+}</code></pre>
+</section>
+
+<section id="s8">
+  <h2><span class="no">8</span>结果回写与显示逻辑</h2>
+  <p>回写段位于 Execute 续段 <code>0x45a1ea–0x45a5dc</code>，是全文逻辑最密集的部分。颜色函数 <code>0x459e64</code> 在整个程序中只有一个调用点（<code>0x45a1ed</code>）。完整还原如下：</p>
+<pre><code>color = ColorOf([+0x68])              ; 0x459e64: 值0 → 0x8000(深绿)；错误码/默认 → 0xFF(红)
+
+if [+0x68] == 0:                      ; ★ 以"结果==0"判定在线（RTT=0ms 的成功）
+    grid2[mod16, div16] = 0xFFFF00    ; 先置青色（过渡态）
+    grid1 行底色 = 0xFFFF00
+    第0列 = IP 字符串 [+0x50]
+
+    if [+0x84] 标志置位:              ; 需要查 MAC
+        GetIpNetTable(call 0x4597e0, 缓冲 0x12c4 字节, 最多 200 项)
+        if 调用成功:
+            遍历表项（步长 24 字节：+0x04 dwIndex, +0x0C..+0x13 bPhysAddr, +0x14 dwAddr）
+            找到 dwAddr == [+0x54] 的表项:
+                第1列 = MAC，格式 "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x" (0x45a664)
+            遍历完未找到: 第1列 = ''
+        else:
+            第1列 = "error:" + IntToStr(返回值)   ; "error:" @ 0x45a690
+    else:
+        第1列 = ''
+
+    → 公共路径 (0x45a4c2):
+    gethostbyaddr(&amp;[+0x54], 4, AF_INET)   ; 经 0x446cf4 包装
+    if 反查成功:
+        grid2 = 0xFF00(绿); 行底色 = 0xFF00FF(品红)
+        第2列 = 主机名; 第3列 = 状态文本("在线")
+    else:
+        grid2 = color; 行底色 = color     ; result=0 时为深绿 0x8000
+
+else:                                  ; ★ RTT&gt;0 或出错 → 按失败处理
+    grid2[mod16, div16] = color(红)
+    行底色 = color
+    第0列 = IP; 第1列 = ''; 第2列 = ''
+    第3列 = FormatStatus([+0x68])      ; 0x459960，见第 9 节
+    → 清理（IcmpCloseHandle + WSACleanup）</code></pre>
+  <div class="warn"><b>注意</b>：成功路径要求 <code>[+0x68]==0</code>，而成功时 <code>[+0x68]</code> 写入的是 RTT。这意味着该判定只在 RTT 恰为 0ms 时走"在线"分支——详见第 12 节"程序怪癖"。</div>
+  <h3>状态文本函数 FormatStatus（0x459960–0x459c3a）</h3>
+  <p>对 <code>[+0x68]</code> 做二叉比较树分派，各分支以 <code>mov edx, &lt;串地址&gt;; call 0x403a3c</code>（LStrAsg）赋值；未知代码走默认分支：<code>IntToStr(值)</code> 拼接到 <code>"ICMP error #"</code>（0x459e54）之后。</p>
+</section>
+
+<section id="s9">
+  <h2><span class="no">9</span>ICMP 状态文本映射表</h2>
+  <p>从状态字符串区（0x459c44–0x459e54，GBK 解码后）完整还原的映射关系：</p>
+  <table>
+    <tr><th>状态码</th><th>显示文本</th><th>状态码</th><th>显示文本</th></tr>
+    <tr><td>0</td><td><b>在线</b></td><td>11013</td><td>TTL传输超时</td></tr>
+    <tr><td>11001</td><td>Buffer too small</td><td>11014</td><td>TTL重组超时</td></tr>
+    <tr><td>11002</td><td>网络不可到达</td><td>11015</td><td>参数出错</td></tr>
+    <tr><td>11003</td><td>主机不可到达</td><td>11016</td><td>Source quench</td></tr>
+    <tr><td>11004</td><td>协议不可到达</td><td>11017</td><td>Option too big</td></tr>
+    <tr><td>11005</td><td>端口不可到达</td><td>11018</td><td>地址错误</td></tr>
+    <tr><td>11006</td><td>No resources</td><td>11019</td><td>Address deleted</td></tr>
+    <tr><td>11007</td><td>Bad option</td><td>11020</td><td>Spec MTU change</td></tr>
+    <tr><td>11008</td><td>Hardware error</td><td>11021</td><td>MTU change</td></tr>
+    <tr><td>11009</td><td>Packet too big</td><td>11050</td><td>General failure</td></tr>
+    <tr><td>11010</td><td><b>超时</b></td><td>205</td><td>Pending</td></tr>
+    <tr><td>11011</td><td>错误的请求包</td><td>其他</td><td>ICMP error #&lt;数值&gt;</td></tr>
+    <tr><td>11012</td><td>错误的路由</td><td></td><td></td></tr>
+  </table>
+  <p class="small">11001–11050 即 Windows IP_STATUS 错误码（IP_BUF_TOO_SMALL、IP_DEST_NET_UNREACHABLE …），205 = ERROR_IO_PENDING；作者对常见码做了中文本地化，其余保留英文或回退为数值拼接。</p>
+</section>
+
+<section id="s10">
+  <h2><span class="no">10</span>颜色语义</h2>
+  <p>程序使用 Delphi TColor（<code>0x00BBGGRR</code>）表达主机状态。颜色函数 <code>0x459e64</code> 已逐字节验证：<code>值==0</code> 分支（0x459f67）为 <code>mov eax, 0x8000; ret</code>，默认分支（0x459ff7）为 <code>mov eax, 0xFF; ret</code>。</p>
+  <table>
+    <tr><th>颜色</th><th>TColor 值</th><th>含义</th></tr>
+    <tr><td><span class="swatch" style="background:#ffff00"></span>黄色</td><td><code>0xFFFF</code></td><td>待测（初始状态，grid2 全图底色）</td></tr>
+    <tr><td><span class="swatch" style="background:#00ffff"></span>青色</td><td><code>0xFFFF00</code></td><td>过渡态：结果==0 的主机刚进入成功分支</td></tr>
+    <tr><td><span class="swatch" style="background:#00ff00"></span>绿色</td><td><code>0xFF00</code></td><td>grid2 成功且反查到主机名（最终态）</td></tr>
+    <tr><td><span class="swatch" style="background:#ff00ff"></span>品红</td><td><code>0xFF00FF</code></td><td>grid1 行成功且反查到主机名（最终态）</td></tr>
+    <tr><td><span class="swatch" style="background:#008000"></span>深绿</td><td><code>0x8000</code></td><td>成功但未反查到主机名（颜色函数对值 0 的返回）</td></tr>
+    <tr><td><span class="swatch" style="background:#ff0000"></span>红色</td><td><code>0xFF</code></td><td>失败（一切已知错误码与默认分支均返回红）</td></tr>
+  </table>
+  <p>Timer1 完成统计时，以行色为 <code>0x8000</code> 或 <code>0xFF00FF</code> 的行数作为"响应主机数"。</p>
+</section>
+
+<section id="s11">
+  <h2><span class="no">11</span>Win9x 注册表子网掩码获取</h2>
+  <p>FormCreate（0x45bfd8）内的一段逻辑（引用 <code>0x45c498</code>、<code>0x45c4ac</code>、<code>0x45c4bc</code>）还原如下——这是典型的 <b>Windows 95/98</b> 获取本机 IP 配置的手法（Win9x 没有 GetAdaptersInfo）：</p>
+<pre><code>掩码 = "255.0.0.0"                          ; 默认值 (0x45c498)
+for i in 0..10:                             ; 循环 11 次
+    子键 = "System\CurrentControlSet\Services\Class\NetTrans\"
+           + Format("%4.4x", i)             ; 0x45c4ac，如 \0000、\0001...
+    打开子键，读取 "IPAddress" (0x45c4f8)
+    if 与本机 IP 匹配:
+        掩码 = 读取 "IPMask" (0x45c50c)
+        break</code></pre>
+  <p class="small">NetTrans 键下每个子项对应一个绑定的网络协议实例，<code>%4.4x</code> 模板循环 11 次（0–10）足以覆盖常见网卡数量。整个注册表访问为<b>只读</b>。</p>
+</section>
+
+<section id="s12">
+  <h2><span class="no">12</span>程序怪癖与疑似 Bug</h2>
+  <div class="bad"><b>RTT&gt;0 的成功主机会被显示为失败。</b><br>
+  Execute 成功时把 RTT 写入 <code>[+0x68]</code>（0x45a19a 处 <code>[+0x68]=[+0x38]</code>），但回写逻辑（0x45a1f8：<code>cmp dword [eax+0x68], 0</code>）以 <b><code>[+0x68]==0</code></b> 作为"在线"判据。因此：</div>
+  <ul>
+    <li><b>RTT = 0ms</b>（Win9x 时代局域网中极常见，计时精度低）→ 走成功分支，显示青/绿/品红/深绿 + "在线"。</li>
+    <li><b>RTT &gt; 0ms</b> 的成功响应 → 落入失败分支，grid2 变红，返回信息列显示 <code>ICMP error #&lt;RTT值&gt;</code>（因为 RTT 数值不在状态码表中，走默认拼接分支）。</li>
+  </ul>
+  <p>也就是说：一台响应时间为 3ms 的主机会被显示为红色"ICMP error #3"。推测作者原始意图是"以状态码 0（IP_SUCCESS）判定在线"，但成功路径写入的却是 RTT 而非状态码，两者混淆导致该行为。在当年的局域网环境下（大量 0ms 响应）软件"看起来工作正常"，该缺陷得以保留。</p>
+  <p>其他观察：</p>
+  <ul>
+    <li><b>工作线程直接操作 VCL 控件</b>（Execute 内直接写 grid1/grid2 单元格），未用 Synchronize——Delphi 中属不安全写法，多线程并发刷新网格时可能产生竞态或界面闪烁，但在当年低并发（≤40 线程、慢速机器）场景下大体能用。</li>
+    <li>GetIpNetTable 缓冲按最多 200 条表项（0x12c4 字节）固定分配；ARP 表超过 200 项的极端环境会截断。</li>
+    <li>MAC 格式化串 <code>"%2.2x:%2.2x:..."</code> 使用冒号分隔（而非 Windows 常见的连字符风格）。</li>
+  </ul>
+</section>
+
+<section id="s13">
+  <h2><span class="no">13</span>安全与行为评估</h2>
+  <div class="ok"><b>结论：无恶意行为，属于正常的网管工具。</b></div>
+  <table>
+    <tr><th>评估项</th><th>结论</th></tr>
+    <tr><td>网络行为</td><td>仅向<b>用户指定网段</b>发送标准 ICMP 回显请求；无 TCP/UDP 连接、无下载、无回传</td></tr>
+    <tr><td>注册表</td><td>只读（NetTrans 键读取掩码），无写入、无自启动项</td></tr>
+    <tr><td>文件系统</td><td>仅在用户操作"保存"时导出 CSV 日志，无其他文件写操作</td></tr>
+    <tr><td>进程/权限</td><td>无进程注入、无提权、无服务安装；仅创建自身工作线程</td></tr>
+    <tr><td>代码混淆</td><td>无壳、无混淆，标准 Delphi 编译产物</td></tr>
+    <tr><td>隐患（非恶意）</td><td>工作线程直接操作 VCL 控件（竞态风险）；固定大小缓冲（200 条 ARP 表项、256 台上限）；RTT 判定缺陷（第 12 节）</td></tr>
+  </table>
+</section>
+
+<section id="s14">
+  <h2><span class="no">14</span>附录：关键地址速查表</h2>
+  <table>
+    <tr><th>地址</th><th>内容</th></tr>
+    <tr><td><code>0x45989c</code></td><td>PingThread 构造函数（10 参数）</td></tr>
+    <tr><td><code>0x459960–0x459c3a</code></td><td>FormatStatus：IP_STATUS → 状态文本（二叉分派 + 默认 "ICMP error #" 拼接）</td></tr>
+    <tr><td><code>0x459e64</code></td><td>ColorOf：状态 → 颜色（0→0x8000 深绿 @0x459f67；默认→0xFF 红 @0x459ff7）</td></tr>
+    <tr><td><code>0x4597e0</code></td><td>GetIpNetTable 调用跳板</td></tr>
+    <tr><td><code>0x446cf4</code></td><td>gethostbyaddr 包装调用</td></tr>
+    <tr><td><code>0x45a000–0x45a632</code></td><td>PingThread.Execute（含 try/finally 延续块）</td></tr>
+    <tr><td><code>0x45a19a</code></td><td>结果落盘点：成功写 RTT / 失败写 GetLastError</td></tr>
+    <tr><td><code>0x45a1ea–0x45a5dc</code></td><td>结果回写段（唯一调用颜色函数 @0x45a1ed）</td></tr>
+    <tr><td><code>0x45b8bc</code></td><td>startbuttonClick（开始扫描）</td></tr>
+    <tr><td><code>0x45bfd8</code></td><td>FormCreate（初始化 + 注册表掩码）</td></tr>
+    <tr><td><code>0x45bd54</code></td><td>活动线程计数递减（<code>dec [eax+0x34c]; ret</code>）</td></tr>
+    <tr><td><code>0x45bd5c</code></td><td>timer1Timer（完成统计）</td></tr>
+    <tr><td><code>0x45c62c</code></td><td>savetolog1Click（CSV 导出）</td></tr>
+    <tr><td><code>0x45c7e4</code></td><td>dealresultbuttonClick（精简结果）</td></tr>
+    <tr><td><code>0x45a644</code></td><td>"PING, written by CBB!"</td></tr>
+    <tr><td><code>0x45a664</code></td><td>MAC 格式串 "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x"</td></tr>
+    <tr><td><code>0x45a690</code></td><td>"error:"（GetIpNetTable 失败前缀）</td></tr>
+    <tr><td><code>0x45c414</code></td><td>"宋体"</td></tr>
+    <tr><td><code>0x45c424/34/48/58</code></td><td>grid1 列标题：IP地址 / 网卡地址 / 主机名 / 返回信息</td></tr>
+    <tr><td><code>0x45c46c</code></td><td>"初始化Winsock时发生错误"</td></tr>
+    <tr><td><code>0x45c498 / 0x45c4ac / 0x45c4bc</code></td><td>"255.0.0.0" / "%4.4x" / "System\CurrentControlSet\Services\Class\NetTrans\"</td></tr>
+    <tr><td><code>0x45c4f8 / 0x45c50c</code></td><td>"IPAddress" / "IPMask"</td></tr>
+    <tr><td><code>0x45c5ac / 0x45c5c0</code></td><td>"图形模式" / "表格模式"</td></tr>
+    <tr><td><code>0x45c9xx–0x45caxx</code></td><td>"quickping"（0x45cabc 数据 / 0x45ca80 引用，单实例互斥与日志文件名）</td></tr>
+    <tr><td><code>0x459c44–0x459e54</code></td><td>状态文本字符串区（见第 9 节）</td></tr>
+  </table>
+</section>
+
+<footer>
+  QuickPing v0.80 逆向分析报告 · 由 REA（morluto/rea，rea-agents v6.5.0）+ Rizin v0.9.1 静态分析生成 · 2026-10-16
+</footer>
+
+</div>
+</body>
+</html>

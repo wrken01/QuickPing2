@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>#QuickPing2(V1.00) --By Örken</title>
+<style>
+:root{
+  --bg:#f0f0f0; --panel:#f5f5f5; --line:#c8c8c8; --text:#222; --muted:#777;
+  --green:#2ea86f; --blue:#3d7dd8; --dark:#4a4a48; --pending:#d9d9d9; --probing:#f0b429;
+}
+*{box-sizing:border-box; font-family:"Microsoft YaHei","SimSun",sans-serif;}
+body{margin:0; background:var(--bg); color:var(--text); font-size:13px;}
+.win{max-width:760px; margin:16px auto; background:var(--panel);
+     border:1px solid var(--line); border-radius:6px; overflow:hidden;}
+.title{background:linear-gradient(#fdfdfd,#e6e6e6); padding:6px 12px; font-size:13px;
+      border-bottom:1px solid var(--line); display:flex; justify-content:space-between;}
+.title .sub{color:var(--muted); font-size:11px;}
+.row{padding:8px 12px; border-bottom:1px solid var(--line); display:flex;
+     align-items:center; gap:6px; flex-wrap:wrap;}
+label{color:#333;}
+input[type=text]{width:38px; border:1px solid var(--line); padding:3px 4px; text-align:center;}
+input[type=text].wide{width:70px; text-align:left;}
+input[type=checkbox]{margin:0 2px 0 8px;}
+.btn{border:1px solid #999; background:linear-gradient(#fff,#ddd); padding:4px 14px;
+     cursor:pointer; border-radius:3px; font-size:13px;}
+.btn:hover{background:linear-gradient(#fff,#ccc);}
+.btn:disabled{color:#999; cursor:default; opacity:.55;}
+.stats{display:flex; gap:14px; flex-wrap:wrap; padding:6px 12px; font-size:12px;
+       border-bottom:1px solid var(--line); background:#fafafa;}
+.stats b{font-weight:600;}
+.k{color:#a32d2d;} .v{color:#993556;}
+.legend{display:flex; gap:10px; padding:4px 12px; font-size:11px; color:var(--muted);
+        border-bottom:1px solid var(--line); flex-wrap:wrap;}
+.legend i{display:inline-block; width:10px; height:10px; border-radius:2px;
+          margin-right:3px; vertical-align:-1px;}
+.main{padding:12px;}
+#matrix{display:grid; grid-template-columns:repeat(16,1fr); gap:2px; max-width:620px;
+        background:#2b2b28; padding:8px; border-radius:4px;}
+.cell{height:22px; border-radius:2px; cursor:pointer; display:flex; align-items:center;
+      justify-content:center; font-size:12px; font-family:Consolas,monospace; font-weight:600;}
+.cell.pending{background:#3d3d3a; color:#999;}
+.cell.probing{background:#f0b429; color:#5a3d00; animation:pulse 1s infinite;}
+.cell.online-icmp{background:#2ea86f; color:#0b4d31;}
+.cell.online-host{background:#7ede8b; color:#0a4d24;}
+.cell.online-arp{background:#3d7dd8; color:#dbe7fb;}
+.cell.online-tcp{background:#e08a00; color:#fff;}
+.cell.offline{background:#d93025; color:#ffd9d6;}
+.cell.cancelled{background:#555; color:#aaa;}
+@keyframes pulse{50%{opacity:.45;}}
+#tableWrap{max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:4px;}
+table{border-collapse:collapse; width:100%; font-size:12px; background:#fff;}
+th,td{padding:3px 10px; border-bottom:1px solid #eee; text-align:left;}
+th{background:#eee; position:sticky; top:0;}
+td.mono{font-family:Consolas,monospace;}
+.st-on{color:var(--green); font-weight:600;}
+.st-off{color:var(--muted);}
+.st-arp{color:var(--blue); font-weight:600;}
+.st-tcp{color:#c87400; font-weight:600;}
+.tag{display:inline-block; border:1px solid #9db6d4; background:#eef3fa; color:#2c5fa8;
+     border-radius:3px; padding:0 4px; margin:1px 3px 1px 0; font-size:11px;
+     font-family:Consolas,monospace; white-space:nowrap;}
+.tag.svc{border-color:#9fd8b8; background:#e8f6ee; color:#1c7a4a;}
+#detail{padding:6px 12px; font-size:12px; color:#555; min-height:20px;}
+.hide{display:none;}
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="title"><span>#QuickPing2(V1.00) --By Örken</span><span class="sub">复刻自 QuickPing(V0.80/Windows98) · 在线检测优化版</span></div>
+
+  <div class="row">
+    <label>IP地址:</label>
+    <input type="text" id="p1" value="192"><span>.</span>
+    <input type="text" id="p2" value="168"><span>.</span>
+    <input type="text" id="p3" value="253"><span>.</span>
+    <input type="text" id="p4" value="0" oninput="$('h1').value=this.value">
+    <label>从</label><input type="text" id="h1" value="0" oninput="$('p4').value=this.value">
+    <label>到</label><input type="text" id="h2" value="255">
+    <label>超时:</label><input type="text" id="timeout" value="200"><span>ms</span>
+    <label>线程:</label><input type="text" id="workers" value="20">
+    <label><input type="checkbox" id="arp" checked>ARP兜底</label>
+    <label><input type="checkbox" id="deep" checked>协议识别</label>
+  </div>
+
+  <div class="stats">
+    <span><b class="k">起始：</b><span class="v" id="sStart">-</span></span>
+    <span><b class="k">终止：</b><span class="v" id="sEnd">-</span></span>
+    <span><b class="k">用时：</b><span class="v" id="sElapsed">-</span></span>
+    <span><b class="k">响应数：</b><span class="v" id="sOnline">-</span></span>
+    <span><b class="k">在线率：</b><span class="v" id="sRate">-</span></span>
+    <span><b class="k">进度：</b><span class="v" id="sDone">-</span></span>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:#3d3d3a"></i>未扫描</span>
+    <span><i style="background:#f0b429"></i>探测中</span>
+    <span><i style="background:#2ea86f"></i>在线</span>
+    <span><i style="background:#7ede8b"></i>在线+主机名(Windows)</span>
+    <span><i style="background:#3d7dd8"></i>在线(ARP兜底)</span>
+    <span><i style="background:#e08a00"></i>在线(TCP探测)</span>
+    <span><i style="background:#d93025"></i>离线</span>
+  </div>
+
+  <div class="main">
+    <div id="matrix"></div>
+    <div id="tableWrap" class="hide">
+      <table>
+        <thead><tr><th>IP</th><th>状态</th><th>方法</th><th>RTT(ms)</th><th>TTL</th><th>主机名</th><th>MAC</th><th>协议</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="detail">点击矩阵格子查看主机详情</div>
+
+  <div class="row" style="border-bottom:none;">
+    <button class="btn" id="startBtn" onclick="startScan()">开始</button>
+    <button class="btn" id="stopBtn" onclick="stopScan()" disabled>停止</button>
+    <button class="btn" id="modeBtn" onclick="toggleMode()">表格模式</button>
+    <button class="btn" id="filterBtn" onclick="toggleFilter()" disabled>精简结果</button>
+    <button class="btn" id="saveBtn" onclick="saveCsv()">保存</button>
+    <button class="btn" onclick="window.close()">关闭</button>
+  </div>
+</div>
+
+<script>
+let timer = null, onlyOnline = false, lastStatus = null;
+
+function $(id){ return document.getElementById(id); }
+
+// 原版 TTelNoEdit 语义：输入框只允许数字
+['p1','p2','p3','p4','h1','h2','timeout','workers'].forEach(id=>{
+  const el = $(id);
+  if(el) el.addEventListener('input', ()=>{ el.value = el.value.replace(/[^0-9]/g,''); });
+});
+
+// 启动时自动探测本机网段填充（原版 FormCreate 同款行为）
+fetch('/api/localnet').then(r=>r.json()).then(j=>{
+  if(j && j.ip){
+    const p = j.ip.split('.');
+    if(p.length===4 && p[0]!=='127'){
+      $('p1').value=p[0]; $('p2').value=p[1]; $('p3').value=p[2];
+      $('detail').textContent = `本机 IP: ${j.ip}（网段已自动填入，可手动修改）`;
+    }
+  }
+}).catch(()=>{});
+
+async function startScan(){
+  const prefix = ['p1','p2','p3'].map(id=>$(id).value.trim()).join('.');
+  const body = {
+    prefix: prefix,
+    start: parseInt($('h1').value)||0,
+    end: parseInt($('h2').value)||255,
+    timeout: parseInt($('timeout').value)||200,
+    workers: parseInt($('workers').value)||20,
+    arp: $('arp').checked,
+    deep: $('deep').checked
+  };
+  const r = await fetch('/api/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const j = await r.json();
+  if(!j.ok){ alert(j.msg); return; }
+  $('startBtn').disabled = true; $('stopBtn').disabled = false;
+  $('filterBtn').disabled = false;
+  buildMatrix(body.start, body.end);
+  if(!timer) timer = setInterval(poll, 400);
+  poll();
+}
+
+async function stopScan(){
+  await fetch('/api/stop', {method:'POST'});
+  $('stopBtn').disabled = true;
+}
+
+function buildMatrix(start, end){
+  const m = $('matrix'); m.innerHTML = '';
+  const n = end - start + 1;
+  for(let i=0;i<n;i++){
+    const c = document.createElement('div');
+    c.className = 'cell pending'; c.id = 'c'+i;
+    c.textContent = (start + i) % 256;
+    c.onclick = () => showDetail(i);
+    m.appendChild(c);
+  }
+}
+
+async function poll(){
+  try{
+    const r = await fetch('/api/status');
+    const j = await r.json();
+    lastStatus = j;
+    render(j);
+  }catch(e){ /* server restarting */ }
+}
+
+const SVC_TAGS = ['SSH','HTTP','HTTPS','SMB','RDP','mDNS'];
+
+function stateClass(r){
+  if(r.state==='online'){
+    if(r.hostname) return 'online-host';           // 亮绿：解析到主机名（原版语义=Windows主机）
+    if(r.method==='arp') return 'online-arp';
+    if(r.method==='tcp'||r.method==='tcp-rst') return 'online-tcp';
+    return 'online-icmp';
+  }
+  return r.state;
+}
+
+function fmtMethod(m){
+  return {icmp:'ICMP', icmp2:'ICMP×2', arp:'ARP', tcp:'TCP', 'tcp-rst':'TCP-RST'}[m] || (m||'');
+}
+
+function tagsHtml(protos){
+  return (protos||[]).map(t=>{
+    const svc = SVC_TAGS.indexOf(t)>=0;
+    return `<span class="tag${svc?' svc':''}">${t}</span>`;
+  }).join('');
+}
+
+function fmtDur(sec){
+  sec = Math.round(sec||0);
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return (h? h+':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function render(j){
+  $('sStart').textContent = j.meta.t0_str || '-';
+  $('sEnd').textContent = j.meta.t1_str || (j.meta.running ? '...' : '-');
+  $('sElapsed').textContent = fmtDur(j.meta.elapsed);
+  $('sOnline').textContent = j.online;
+  $('sRate').textContent = j.done ? (100*j.online/j.done).toFixed(1) + '%' : '-';
+  $('sDone').textContent = j.done + ' / ' + j.total;
+  if(j.meta.running===false){ $('startBtn').disabled=false; $('stopBtn').disabled=true; }
+
+  j.results.forEach((r,i)=>{
+    const c = $('c'+i);
+    if(!c) return;
+    const cls = 'cell ' + stateClass(r);
+    if(c.className !== cls) c.className = cls;
+    c.title = r.ip + ' | ' + labelOf(r)
+      + (r.hostname ? ' | ' + r.hostname : '')
+      + (r.protos && r.protos.length ? ' | ' + r.protos.join(',') : '')
+      + (r.rtt!=null ? ' | ' + r.rtt + 'ms' : '')
+      + (r.ttl!=null ? ' | TTL ' + r.ttl : '')
+      + (r.mac ? ' | ' + r.mac : '')
+      + (r.state==='offline' && r.error && r.error!=='-' ? ' | ' + r.error : '');
+  });
+  renderTable(j);
+}
+
+function labelOf(r){
+  if(r.state==='online'){
+    if(r.method==='arp') return '在线(ARP)';
+    if(r.method==='tcp') return '在线(TCP)';
+    if(r.method==='tcp-rst') return '在线(TCP/RST)';
+    return '在线';
+  }
+  if(r.state==='offline') return '离线';
+  if(r.state==='probing') return '探测中';
+  if(r.state==='cancelled') return '已取消';
+  return '未扫描';
+}
+
+function renderTable(j){
+  const tb = $('tbody'); const rows = [];
+  j.results.forEach(r=>{
+    if(onlyOnline && r.state!=='online') return;
+    if(r.state==='pending') return;
+    const cls = r.state==='online'
+      ? (r.method==='arp' ? 'st-arp' : (r.method==='tcp'||r.method==='tcp-rst' ? 'st-tcp' : 'st-on'))
+      : 'st-off';
+    rows.push(`<tr><td class="mono">${r.ip}</td><td class="${cls}">${labelOf(r)}${r.state==='offline'&&r.error&&r.error!=='-'?' ('+r.error+')':''}</td><td>${fmtMethod(r.method)}</td><td class="mono">${r.rtt!=null?r.rtt:''}</td><td class="mono">${r.ttl!=null?r.ttl:''}</td><td>${r.hostname||''}</td><td class="mono">${r.mac||''}</td><td>${tagsHtml(r.protos)}</td></tr>`);
+  });
+  tb.innerHTML = rows.join('');
+}
+
+function showDetail(i){
+  if(!lastStatus || !lastStatus.results[i]) return;
+  const r = lastStatus.results[i];
+  $('detail').textContent = `${r.ip}  ${labelOf(r)}`
+    + `${r.method? '  方法:'+fmtMethod(r.method):''}`
+    + `${r.protos && r.protos.length ? '  协议:'+r.protos.join('/'):''}`
+    + `${r.rtt!=null?'  RTT:'+r.rtt+'ms':''}`
+    + `${r.ttl!=null?'  TTL:'+r.ttl:''}`
+    + `${r.hostname?'  主机名:'+r.hostname:''}`
+    + `${r.mac?'  MAC:'+r.mac:''}`
+    + `${r.state==='offline'&&r.error&&r.error!=='-'?'  ('+r.error+')':''}`;
+}
+
+function toggleMode(){
+  const t = $('tableWrap'), m = $('matrix');
+  if(t.classList.contains('hide')){ t.classList.remove('hide'); m.classList.add('hide'); $('modeBtn').textContent='矩阵模式'; }
+  else{ t.classList.add('hide'); m.classList.remove('hide'); $('modeBtn').textContent='表格模式'; }
+}
+
+function toggleFilter(){
+  onlyOnline = !onlyOnline;
+  $('filterBtn').textContent = onlyOnline ? '显示全部' : '精简结果';
+  if(lastStatus) renderTable(lastStatus);
+}
+
+function saveCsv(){
+  const url = onlyOnline ? '/api/export?only=online' : '/api/export';
+  window.open(url, '_blank');
+}
+</script>
+</body>
+</html>
