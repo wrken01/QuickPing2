@@ -3,3 +3,6 @@ build/
 build_gui/
 build_portable/
 *.pyc
+
+# 工作区根目录手动放置的旧 GUI 副本（非构建产物，勿提交）
+/QuickPing2GUI.exe

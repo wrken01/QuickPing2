@@ -20,6 +20,8 @@ body{margin:0; background:var(--bg); color:var(--text); font-size:13px;}
 label{color:#333;}
 input[type=text]{width:38px; border:1px solid var(--line); padding:3px 4px; text-align:center;}
 input[type=text].wide{width:70px; text-align:left;}
+input[type=text].ip{width:104px; text-align:left; font-family:Consolas,monospace;}
+input[type=text].ports{width:120px; text-align:left;}
 input[type=checkbox]{margin:0 2px 0 8px;}
 .btn{border:1px solid #999; background:linear-gradient(#fff,#ddd); padding:4px 14px;
      cursor:pointer; border-radius:3px; font-size:13px;}
@@ -60,13 +62,36 @@ td.mono{font-family:Consolas,monospace;}
      border-radius:3px; padding:0 4px; margin:1px 3px 1px 0; font-size:11px;
      font-family:Consolas,monospace; white-space:nowrap;}
 .tag.svc{border-color:#9fd8b8; background:#e8f6ee; color:#1c7a4a;}
-#detail{padding:6px 12px; font-size:12px; color:#555; min-height:20px;}
+.tag.os{font-weight:600;}
+.tag.os-windows{border-color:#9db6d4; background:#e8f0fe; color:#1a56c4;}
+.tag.os-linux{border-color:#c9a8e0; background:#f3e8f9; color:#7b3fa0;}
+.tag.os-net{border-color:#e8c39a; background:#fdf0e3; color:#b35a00;}
+.tag.os-unknown{border-color:#bbb; background:#eee; color:#666;}
+.tag.popen{border-color:#9fd8b8; background:#e8f6ee; color:#1c7a4a; font-family:Consolas,monospace;}
+.tag.pudp{border-color:#a8d5e8; background:#e8f4fa; color:#1a6a9c; font-family:Consolas,monospace;}
+.tag.pclosed{border-color:#ccc; background:#f2f2f2; color:#888; font-family:Consolas,monospace;}
+.tag.pwarn{border-color:#e0b97a; background:#fdf3e3; color:#a0600a; font-family:Consolas,monospace;}
+.pswarn{margin-top:5px; padding:5px 8px; border:1px solid #e0b97a; background:#fdf3e3;
+        color:#8a4b00; border-radius:4px; line-height:1.5;}
+#psResult{padding:6px 12px; font-size:12px; color:#333; min-height:20px; flex-wrap:wrap;}
+#dcResult{padding:6px 12px; font-size:12px; color:#333; max-height:240px; overflow:auto;}
+#dcResult table{margin-top:6px;}
+#dcResult td{vertical-align:top;}
 .hide{display:none;}
 </style>
 </head>
 <body>
 <div class="win">
   <div class="title"><span>#QuickPing2(V1.00) --By Örken</span><span class="sub">复刻自 QuickPing(V0.80/Windows98) · 在线检测优化版</span></div>
+
+  <div class="row">
+    <button class="btn" id="startBtn" onclick="startScan()">开始</button>
+    <button class="btn" id="stopBtn" onclick="stopScan()" disabled>停止</button>
+    <button class="btn" id="modeBtn" onclick="toggleMode()">表格模式</button>
+    <button class="btn" id="filterBtn" onclick="toggleFilter()" disabled>精简结果</button>
+    <button class="btn" id="saveBtn" onclick="saveCsv()">保存</button>
+    <button class="btn" onclick="window.close()">关闭</button>
+  </div>
 
   <div class="row">
     <label>IP地址:</label>
@@ -88,6 +113,7 @@ td.mono{font-family:Consolas,monospace;}
     <span><b class="k">用时：</b><span class="v" id="sElapsed">-</span></span>
     <span><b class="k">响应数：</b><span class="v" id="sOnline">-</span></span>
     <span><b class="k">在线率：</b><span class="v" id="sRate">-</span></span>
+    <span><b class="k">系统：</b><span class="v" id="sOs">-</span></span>
     <span><b class="k">进度：</b><span class="v" id="sDone">-</span></span>
   </div>
 
@@ -114,13 +140,41 @@ td.mono{font-family:Consolas,monospace;}
   <div id="detail">点击矩阵格子查看主机详情</div>
 
   <div class="row" style="border-bottom:none;">
-    <button class="btn" id="startBtn" onclick="startScan()">开始</button>
-    <button class="btn" id="stopBtn" onclick="stopScan()" disabled>停止</button>
-    <button class="btn" id="modeBtn" onclick="toggleMode()">表格模式</button>
-    <button class="btn" id="filterBtn" onclick="toggleFilter()" disabled>精简结果</button>
-    <button class="btn" id="saveBtn" onclick="saveCsv()">保存</button>
-    <button class="btn" onclick="window.close()">关闭</button>
+    <label>端口扫描:</label>
+    <input type="text" id="psIp" name="qp_port_ip" class="ip" placeholder="手动输入 IP" autocomplete="off" autocorrect="off" spellcheck="false">
+    <label>协议:</label>
+    <select id="psProto" style="padding:3px 4px; border:1px solid var(--line); background:#fff;">
+      <option value="tcp">TCP</option>
+      <option value="udp">UDP</option>
+      <option value="both">TCP+UDP</option>
+    </select>
+    <label>范围:</label>
+    <input type="text" id="psPorts" class="ports" value="全部" autocomplete="off" spellcheck="false" title="支持：全部(1-65535) / 常用 / 80,443 / 1-1024">
+    <button class="btn" id="psBtn" onclick="startPortScan()">扫描端口</button>
+    <button class="btn" id="psStopBtn" onclick="stopPortScan()" disabled>停止</button>
+    <button class="btn" id="psSaveBtn" onclick="savePortCsv()" disabled>保存</button>
   </div>
+  <div id="psResult" class="hide"></div>
+
+  <div class="row" style="border-top:1px solid var(--line); border-bottom:none;">
+    <label>组播发现:</label>
+    <label><input type="checkbox" id="dcSsdp" checked>SSDP</label>
+    <label><input type="checkbox" id="dcMdns" checked>mDNS</label>
+    <label><input type="checkbox" id="dcWsd" checked>WS-Discovery(ONVIF)</label>
+    <label><input type="checkbox" id="dcNbns" checked>NetBIOS</label>
+    <label>等待:</label><input type="text" id="dcTimeout" value="5"><span>s</span>
+    <button class="btn" id="dcBtn" onclick="startDiscover()">发现设备</button>
+    <button class="btn" id="dcStopBtn" onclick="stopDiscover()" disabled>停止</button>
+    <button class="btn" id="dcSaveBtn" onclick="saveDiscoverCsv()" disabled>保存</button>
+  </div>
+  <div class="row" style="padding-top:0;">
+    <label>安防设备:</label>
+    <label><input type="checkbox" id="dcDahua" checked>大华 DHIP</label>
+    <label><input type="checkbox" id="dcHikvision" checked>海康 SADP</label>
+    <label><input type="checkbox" id="dcDvrip" checked>大华 DVRIP(老设备)</label>
+    <span style="color:#777; font-size:11px;">宇视等无私有组播，靠上面的 WS-Discovery(ONVIF) 发现</span>
+  </div>
+  <div id="dcResult" class="hide"></div>
 </div>
 
 <script>
@@ -193,6 +247,7 @@ async function poll(){
 }
 
 const SVC_TAGS = ['SSH','HTTP','HTTPS','SMB','RDP','mDNS'];
+const OS_CLS = {'Windows':'os-windows','Linux/Unix':'os-linux','网络设备':'os-net','未知':'os-unknown'};
 
 function stateClass(r){
   if(r.state==='online'){
@@ -208,8 +263,10 @@ function fmtMethod(m){
   return {icmp:'ICMP', icmp2:'ICMP×2', arp:'ARP', tcp:'TCP', 'tcp-rst':'TCP-RST'}[m] || (m||'');
 }
 
-function tagsHtml(protos){
-  return (protos||[]).map(t=>{
+function tagsHtml(protos, os){
+  let h = '';
+  if(os) h += `<span class="tag os ${OS_CLS[os]||'os-unknown'}">${os}</span>`;
+  return h + (protos||[]).map(t=>{
     const svc = SVC_TAGS.indexOf(t)>=0;
     return `<span class="tag${svc?' svc':''}">${t}</span>`;
   }).join('');
@@ -227,6 +284,8 @@ function render(j){
   $('sElapsed').textContent = fmtDur(j.meta.elapsed);
   $('sOnline').textContent = j.online;
   $('sRate').textContent = j.done ? (100*j.online/j.done).toFixed(1) + '%' : '-';
+  $('sOs').textContent = j.by_os && Object.keys(j.by_os).length
+    ? Object.entries(j.by_os).map(([k,v])=>k+'×'+v).join('  ') : '-';
   $('sDone').textContent = j.done + ' / ' + j.total;
   if(j.meta.running===false){ $('startBtn').disabled=false; $('stopBtn').disabled=true; }
 
@@ -236,6 +295,7 @@ function render(j){
     const cls = 'cell ' + stateClass(r);
     if(c.className !== cls) c.className = cls;
     c.title = r.ip + ' | ' + labelOf(r)
+      + (r.os ? ' | ' + r.os : '')
       + (r.hostname ? ' | ' + r.hostname : '')
       + (r.protos && r.protos.length ? ' | ' + r.protos.join(',') : '')
       + (r.rtt!=null ? ' | ' + r.rtt + 'ms' : '')
@@ -261,13 +321,13 @@ function labelOf(r){
 
 function renderTable(j){
   const tb = $('tbody'); const rows = [];
-  j.results.forEach(r=>{
+  j.results.forEach((r,i)=>{
     if(onlyOnline && r.state!=='online') return;
     if(r.state==='pending') return;
     const cls = r.state==='online'
       ? (r.method==='arp' ? 'st-arp' : (r.method==='tcp'||r.method==='tcp-rst' ? 'st-tcp' : 'st-on'))
       : 'st-off';
-    rows.push(`<tr><td class="mono">${r.ip}</td><td class="${cls}">${labelOf(r)}${r.state==='offline'&&r.error&&r.error!=='-'?' ('+r.error+')':''}</td><td>${fmtMethod(r.method)}</td><td class="mono">${r.rtt!=null?r.rtt:''}</td><td class="mono">${r.ttl!=null?r.ttl:''}</td><td>${r.hostname||''}</td><td class="mono">${r.mac||''}</td><td>${tagsHtml(r.protos)}</td></tr>`);
+    rows.push(`<tr onclick="showDetail(${i})" style="cursor:pointer"><td class="mono">${r.ip}</td><td class="${cls}">${labelOf(r)}${r.state==='offline'&&r.error&&r.error!=='-'?' ('+r.error+')':''}</td><td>${fmtMethod(r.method)}</td><td class="mono">${r.rtt!=null?r.rtt:''}</td><td class="mono">${r.ttl!=null?r.ttl:''}</td><td>${r.hostname||''}</td><td class="mono">${r.mac||''}</td><td>${tagsHtml(r.protos, r.os)}</td></tr>`);
   });
   tb.innerHTML = rows.join('');
 }
@@ -277,6 +337,7 @@ function showDetail(i){
   const r = lastStatus.results[i];
   $('detail').textContent = `${r.ip}  ${labelOf(r)}`
     + `${r.method? '  方法:'+fmtMethod(r.method):''}`
+    + `${r.os?'  系统:'+r.os:''}`
     + `${r.protos && r.protos.length ? '  协议:'+r.protos.join('/'):''}`
     + `${r.rtt!=null?'  RTT:'+r.rtt+'ms':''}`
     + `${r.ttl!=null?'  TTL:'+r.ttl:''}`
@@ -300,6 +361,157 @@ function toggleFilter(){
 function saveCsv(){
   const url = onlyOnline ? '/api/export?only=online' : '/api/export';
   window.open(url, '_blank');
+}
+
+/* ---------- 单 IP 端口扫描 ---------- */
+let psTimer = null;
+
+async function startPortScan(){
+  const ip = $('psIp').value.trim();
+  const spec = $('psPorts').value.trim() || '全部';
+  const proto = $('psProto').value;
+  if(!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)){
+    alert('请手动输入要扫描的 IP 地址'); return;
+  }
+  const r = await fetch('/api/portscan', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ip:ip, ports:spec, proto:proto, workers:256, timeout:0.8})});
+  const j = await r.json();
+  if(!j.ok){ alert(j.msg); return; }
+  $('psBtn').disabled = true; $('psStopBtn').disabled = false;
+  $('psSaveBtn').disabled = true;
+  $('psResult').classList.remove('hide');
+  $('psResult').innerHTML = `<span>${ip} (${proto.toUpperCase()}) 扫描中...</span>`;
+  if(!psTimer) psTimer = setInterval(pollPorts, 500);
+  pollPorts();
+}
+
+async function pollPorts(){
+  try{
+    const r = await fetch('/api/portstatus');
+    const j = await r.json();
+    renderPorts(j);
+  }catch(e){ /* server restarting */ }
+}
+
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderPorts(j){
+  const m = j.meta;
+  if(!m.running){
+    if(psTimer){ clearInterval(psTimer); psTimer = null; }
+    $('psBtn').disabled = false; $('psStopBtn').disabled = true;
+    $('psSaveBtn').disabled = j.open_ports.length === 0;
+  }
+  const lines = Object.entries(j.summary || {})
+    .sort((a,b)=> a[0] > b[0] ? 1 : -1)
+    .map(([p,s])=>{
+      if(p === 'udp') return `<span><b style="color:#1a6a9c">UDP</b> 开放 ${s.open} / 关闭 ${s.closed} / 未知 ${s.unknown}</span>`;
+      return `<span><b style="color:#1c7a4a">TCP</b> 开放 ${s.open} / 关闭 ${s.closed} / 过滤 ${s.filtered}</span>`;
+    }).join(' &nbsp;·&nbsp; ');
+  const verify = (m.verified_open || m.unverified_open)
+    ? ` · 欢迎语已验证 ${m.verified_open||0} / 存疑 ${m.unverified_open||0}` : '';
+  const shown = j.open_ports.slice(0, 300);
+  const chips = shown.map(x=>{
+    const warn = x.verdict === 'unconfirmed';
+    const tip = x.banner ? x.banner : (warn ? '未收到预期服务欢迎语' : '');
+    const cls = warn ? 'pwarn' : (x.proto==='udp' ? 'pudp' : 'popen');
+    const tipAttr = tip ? ' title="'+esc(tip)+'"' : '';
+    return `<span class="tag ${cls}"${tipAttr}>${x.proto.toUpperCase()} ${x.port}${x.service?' ('+esc(x.service)+')':''}${warn?' ?':''}</span>`;
+  }).join('') + (j.open_ports.length > 300
+    ? `<span class="tag pwarn">另有 ${j.open_ports.length-300} 个开放端口，请导出 CSV 查看</span>` : '');
+  const warnHtml = (!m.running && m.suspect_syn_proxy)
+    ? `<div class="pswarn">注意：${esc(m.suspect_reason||'')}。开放端口清单请勿直接采信，建议用 banner 或 nmap -sV 复核。</div>`
+    : '';
+  $('psResult').innerHTML =
+    `<span><b class="k">${esc(m.ip)}</b> &nbsp;${lines || ''}${verify} · 进度 ${m.done}/${j.results.length} · 用时 ${fmtDur(m.elapsed)}</span><br>` +
+    (chips || (m.running ? '<span style="color:#777">扫描中，尚未发现开放端口...</span>'
+                         : '<span style="color:#777">未发现开放端口</span>')) +
+    warnHtml +
+    (($('psIp').value.trim() && $('psIp').value.trim() !== m.ip)
+      ? `<br><span style="color:#c0392b">注意：本次扫描目标是 ${esc(m.ip)}，与输入框当前值 ${esc($('psIp').value.trim())} 不一致</span>`
+      : '');
+}
+
+async function stopPortScan(){
+  await fetch('/api/portstop', {method:'POST'});
+  $('psStopBtn').disabled = true;
+}
+
+function savePortCsv(){
+  window.open('/api/portexport', '_blank');
+}
+
+/* ---------- 局域网组播发现 ---------- */
+let dcTimer = null;
+
+async function startDiscover(){
+  const protos = [];
+  [['dcSsdp','ssdp'],['dcMdns','mdns'],['dcWsd','wsd'],['dcNbns','nbns'],
+   ['dcDahua','dahua'],['dcHikvision','hikvision'],['dcDvrip','dvrip']].forEach(function(pair){
+    if($(pair[0]).checked) protos.push(pair[1]);
+  });
+  const t = parseFloat($('dcTimeout').value) || 5;
+  const r = await fetch('/api/discover', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({protos:protos, timeout:t})});
+  const j = await r.json();
+  if(!j.ok){ alert(j.msg); return; }
+  $('dcBtn').disabled = true; $('dcStopBtn').disabled = false;
+  $('dcSaveBtn').disabled = true;
+  $('dcResult').classList.remove('hide');
+  $('dcResult').innerHTML = '<span>正在发送组播查询并等待应答...</span>';
+  if(!dcTimer) dcTimer = setInterval(pollDiscover, 500);
+  pollDiscover();
+}
+
+async function pollDiscover(){
+  try{
+    const r = await fetch('/api/discoverstatus');
+    const j = await r.json();
+    renderDiscover(j);
+  }catch(e){ /* server restarting */ }
+}
+
+function renderDiscover(j){
+  const m = j.meta;
+  if(!m.running){
+    if(dcTimer){ clearInterval(dcTimer); dcTimer = null; }
+    $('dcBtn').disabled = false; $('dcStopBtn').disabled = true;
+    $('dcSaveBtn').disabled = j.devices.length === 0;
+  }
+  const rows = j.devices.map(function(d){
+    const chips = d.protos.map(function(p){
+      return '<span class="tag svc">' + esc(p) + '</span>';
+    }).join('');
+    const detail = d.details.length
+      ? d.details.map(function(x){ return '<div>' + esc(x) + '</div>'; }).join('')
+      : '<span style="color:#999">-</span>';
+    return '<tr><td class="mono">' + esc(d.ip) + '</td><td>' + chips + '</td><td>'
+      + (esc(d.name) || '<span style="color:#999">-</span>') + '</td><td>' + detail
+      + '</td><td class="mono">' + esc(d.first_seen) + '</td></tr>';
+  }).join('');
+  const table = j.devices.length
+    ? '<table><thead><tr><th>IP</th><th>协议</th><th>名称</th><th>详情</th><th>时间</th></tr></thead><tbody>'
+      + rows + '</tbody></table>'
+    : (m.running ? '<span style="color:#777">等待设备应答...</span>'
+                 : '<span style="color:#777">未发现设备</span>');
+  const warnHtml = (!m.running && m.warn)
+    ? '<div class="pswarn">注意：' + esc(m.warn) + '</div>' : '';
+  $('dcResult').innerHTML =
+    '<span><b class="k">组播发现</b> &nbsp;协议 ' + esc((m.protos||[]).join(' / '))
+    + ' · 应答包 ' + (m.packets||0) + ' · 设备 ' + j.devices.length
+    + ' · 用时 ' + fmtDur(m.elapsed) + '</span>' + warnHtml + table;
+}
+
+async function stopDiscover(){
+  await fetch('/api/discoverstop', {method:'POST'});
+  $('dcStopBtn').disabled = true;
+}
+
+function saveDiscoverCsv(){
+  window.open('/api/discoverexport', '_blank');
 }
 </script>
 </body>
